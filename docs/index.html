@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VIP 專屬預約</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    body { font-family: sans-serif; background: #FDFBF7; padding: 20px; color: #4A4A4A; margin: 0; }
+    .container { max-width: 400px; margin: 0 auto; background: #FFF; padding: 30px; border-radius: 12px; box-shadow: 0 5px 20px rgba(0,0,0,0.05); }
+    h2 { text-align: center; color: #B59B7D; font-weight: 300; letter-spacing: 1px; }
+    label { display: block; margin-top: 15px; font-size: 14px; color: #666; }
+    input, select { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #E0E0E0; border-radius: 6px; box-sizing: border-box; background: #FAFAFA; font-size: 16px;}
+    
+    /* 時段按鈕 */
+    .slot-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+    .slot-btn { padding: 10px; border: 1px solid #B59B7D; color: #B59B7D; border-radius: 6px; text-align: center; cursor: pointer; transition: 0.2s; }
+    .slot-btn.selected { background: #B59B7D; color: #FFF; }
+    
+    /* 按鈕樣式 */
+    .btn-submit { width: 100%; padding: 15px; background: #B59B7D; color: white; border: none; border-radius: 6px; margin-top: 25px; font-size: 16px; cursor: pointer; }
+    .btn-submit:disabled { background: #D3C9BE; cursor: not-allowed; }
+
+    /* 成功訊息區塊 (預設隱藏) */
+    #success-view { display: none; text-align: center; padding: 20px 0; }
+    .check-icon { font-size: 60px; color: #B59B7D; margin-bottom: 20px; }
+    .success-text { font-size: 18px; line-height: 1.6; color: #4A4A4A; }
+    .small-text { font-size: 14px; color: #999; margin-top: 10px; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    
+    <div id="form-view">
+      <h2>專屬預約</h2>
+      <form id="bookingForm">
+        <input type="hidden" id="userId">
+        
+        <label>姓名</label>
+        <input type="text" id="name" placeholder="請輸入姓名">
+        
+        <label>電話</label>
+        <input type="tel" id="phone" placeholder="09XX-XXX-XXX">
+        
+        <label>服務項目</label>
+        <select id="service">
+          <option>載入中...</option>
+        </select>
+        
+        <label>預約日期</label>
+        <input type="date" id="date" onchange="loadSlots()">
+        
+        <label>選擇時段</label>
+        <div id="slotContainer" class="slot-grid">請先選擇日期</div>
+        <input type="hidden" id="time">
+
+        <button type="button" class="btn-submit" id="submitBtn" onclick="submitForm()">確認預約</button>
+      </form>
+    </div>
+
+    <div id="success-view">
+      <div class="check-icon">✨</div>
+      <div class="success-text">
+        <b>感謝您預約！</b><br>
+        您的預約申請已送出。<br>
+        美睫師將盡快確認您的時段。
+      </div>
+      <div class="small-text">
+        您將在 LINE 收到確認通知。<br>
+        期待與您相見 💕
+      </div>
+      <button onclick="liff.closeWindow()" class="btn-submit" style="margin-top:30px;">關閉視窗</button>
+    </div>
+
+  </div>
+
+<script>
+    // ⚠️ 請填入您的設定
+    const LIFF_ID = "2009213230-eIOOHDEU";
+    // ⚠️ 部署 GAS Web App 後，將網址貼在這裡
+    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbz051ALGGy9BXLkp6xaEvCE61e0vzAMoFZ6-taCNMIgRtHkOhyv4NmhvbTid1PiNa5pdA/exec";
+
+    let currentUserId = "";
+
+    window.onload = function() {
+      initializeLiff();
+    };
+
+    async function initializeLiff() {
+      try {
+        await liff.init({ liffId: LIFF_ID });
+        if (!liff.isLoggedIn()) {
+          liff.login();
+          return;
+        }
+        const profile = await liff.getProfile();
+        currentUserId = profile.userId;
+        document.getElementById('userId').value = profile.userId;
+        console.log("ID抓取成功: " + currentUserId);
+      } catch (err) {
+        console.error("LIFF 初始化失敗:", err);
+        alert("LIFF 初始化失敗: " + err + "\n請確認是否使用手機 LINE 開啟。");
+      }
+
+      // 載入服務項目
+      try {
+        const res = await fetch(GAS_API_URL + '?action=getServiceList');
+        const services = await res.json();
+        const select = document.getElementById('service');
+        select.innerHTML = '';
+        services.forEach(s => {
+          let opt = document.createElement('option');
+          opt.value = s;
+          opt.innerText = s;
+          select.appendChild(opt);
+        });
+      } catch (err) {
+        console.error("載入服務項目失敗:", err);
+      }
+    }
+
+    // 載入時段
+    async function loadSlots() {
+      const date = document.getElementById('date').value;
+      const container = document.getElementById('slotContainer');
+      container.innerHTML = '<div style="grid-column:span 3; text-align:center; color:#999;">查詢中...</div>';
+
+      try {
+        const res = await fetch(GAS_API_URL + '?action=getAvailableSlots&date=' + encodeURIComponent(date));
+        const slots = await res.json();
+        container.innerHTML = '';
+        if (slots.length === 0) {
+          container.innerHTML = '<div style="grid-column:span 3; text-align:center; color:red;">該日已無空檔或未開放</div>';
+          return;
+        }
+        slots.forEach(t => {
+          let div = document.createElement('div');
+          div.className = 'slot-btn';
+          div.innerText = t;
+          div.onclick = function() {
+            document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('selected'));
+            this.classList.add('selected');
+            document.getElementById('time').value = t;
+          };
+          container.appendChild(div);
+        });
+      } catch (err) {
+        container.innerHTML = '<div style="grid-column:span 3; text-align:center; color:red;">載入失敗，請重試</div>';
+      }
+    }
+
+    // 送出表單
+    async function submitForm() {
+      const finalUid = currentUserId || document.getElementById('userId').value;
+
+      if (!finalUid) {
+        alert("❌ 系統尚未抓到您的 LINE 資料\n\n請確認：\n1. 是否使用手機 LINE 開啟？\n2. 網路連線是否正常？\n\n請重新整理頁面再試一次。");
+        liff.login();
+        return;
+      }
+
+      const data = {
+        action: 'processBooking',
+        userId: finalUid,
+        name: document.getElementById('name').value,
+        phone: document.getElementById('phone').value,
+        service: document.getElementById('service').value,
+        date: document.getElementById('date').value,
+        time: document.getElementById('time').value
+      };
+
+      if (!data.name || !data.phone || !data.date || !data.time) return alert("請完整填寫資料");
+
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.innerText = "處理中...";
+
+      try {
+        const response = await fetch(GAS_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify(data)
+        });
+        const res = await response.json();
+        if (res.status === 'success') {
+          document.getElementById('form-view').style.display = 'none';
+          document.getElementById('success-view').style.display = 'block';
+        } else {
+          alert(res.message);
+          btn.disabled = false;
+          btn.innerText = "確認預約";
+          loadSlots();
+        }
+      } catch (err) {
+        alert("送出失敗，請重試");
+        btn.disabled = false;
+        btn.innerText = "確認預約";
+      }
+    }
+  </script>
+</body>
+</html>
