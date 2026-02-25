@@ -47,6 +47,11 @@
         <select id="service">
           <option>載入中...</option>
         </select>
+
+        <label>指定美睫師</label>
+        <select id="stylist" onchange="loadSlots()">
+          <option value="">不指定</option>
+        </select>
         
         <label>預約日期</label>
         <input type="date" id="date" onchange="loadSlots()">
@@ -79,7 +84,7 @@
     // ⚠️ 請填入您的設定
     const LIFF_ID = "2009213230-eIOOHDEU";
     // ⚠️ 部署 GAS Web App 後，將網址貼在這裡
-    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbwMVhXrDJxoeAPcekAT-grAGygL7ZProkW1tqoV1iotKgD38Xr0k19lrUGAzyo2rp3c/exec";
+    const GAS_API_URL = "https://script.google.com/macros/s/您的_DEPLOYMENT_ID/exec";
 
     let currentUserId = "";
 
@@ -118,16 +123,34 @@
       } catch (err) {
         console.error("載入服務項目失敗:", err);
       }
+
+      // 載入美睫師列表
+      try {
+        const res = await fetch(GAS_API_URL + '?action=getStylistList');
+        const stylists = await res.json();
+        const select = document.getElementById('stylist');
+        select.innerHTML = '<option value="">不指定</option>';
+        stylists.forEach(s => {
+          let opt = document.createElement('option');
+          opt.value = s;
+          opt.innerText = s;
+          select.appendChild(opt);
+        });
+      } catch (err) {
+        console.error("載入美睫師失敗:", err);
+      }
     }
 
     // 載入時段
     async function loadSlots() {
       const date = document.getElementById('date').value;
+      if (!date) return;
+      const stylist = document.getElementById('stylist').value;
       const container = document.getElementById('slotContainer');
       container.innerHTML = '<div style="grid-column:span 3; text-align:center; color:#999;">查詢中...</div>';
 
       try {
-        const res = await fetch(GAS_API_URL + '?action=getAvailableSlots&date=' + encodeURIComponent(date));
+        const res = await fetch(GAS_API_URL + '?action=getAvailableSlots&date=' + encodeURIComponent(date) + '&stylist=' + encodeURIComponent(stylist));
         const slots = await res.json();
         container.innerHTML = '';
         if (slots.length === 0) {
@@ -167,7 +190,8 @@
         phone: document.getElementById('phone').value,
         service: document.getElementById('service').value,
         date: document.getElementById('date').value,
-        time: document.getElementById('time').value
+        time: document.getElementById('time').value,
+        stylist: document.getElementById('stylist').value
       };
 
       if (!data.name || !data.phone || !data.date || !data.time) return alert("請完整填寫資料");
